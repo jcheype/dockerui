@@ -152,7 +152,8 @@ function SettingsController($scope, System, Docker, Settings, Messages) {
 }
 
 // Controls the page that displays a single container and actions on that container.
-function ContainerController($scope, $routeParams, $location, Container, Messages, ViewSpinner) {
+function ContainerController($scope, $routeParams, $location, Container, Messages, ViewSpinner, Settings) {
+    $scope.endpoint = Settings.endpoint;
     $scope.changes = [];
 
     $scope.start = function(){
@@ -197,8 +198,25 @@ function ContainerController($scope, $routeParams, $location, Container, Message
         });
     };
 
+
+
+    getPorts = function(ports){
+        var result = _.chain(ports).pairs().map(function(item) {
+            var splited = item[0].split('/');
+            var p = 0
+            if(item[1] && item[1][0]){
+                p = item[1][0].HostPort;
+            }
+            return {src: p , type: splited[1], dst: splited[0] }
+        }).value();
+        return result;
+    }
+
+
     Container.get({id: $routeParams.id}, function(d) {
         $scope.container = d;
+        $scope.ports = getPorts(d.NetworkSettings.Ports)
+
     }, function(e) {
         if (e.status === 404) {
             $('.detail').hide();
@@ -413,15 +431,24 @@ function StartContainerController($scope, $routeParams, $location, Container, Me
         var loc = $location;
         var s = $scope;
 
+        var pb = _.mapValues($scope.image.config.ExposedPorts, function(it){
+            return [{ "HostPort": [] }];
+        });
         Container.create({
                 Image: id,
                 Memory: $scope.config.memory,
                 MemorySwap: $scope.config.memorySwap,
                 Cmd: cmds,
-                VolumesFrom: $scope.config.volumesFrom
+                VolumesFrom: $scope.config.volumesFrom,
+                ExposedPorts: $scope.image.config.ExposedPorts
             }, function(d) {
+                var param = {
+                    id: d.Id,
+                    PortBindings:pb
+                };
+
                 if (d.Id) {
-                    ctor.start({id: d.Id}, function(cd) {
+                    ctor.start(param, function(cd) {
                         $('#create-modal').modal('hide');
                         loc.path('/containers/' + d.Id + '/');
                     }, function(e) {
